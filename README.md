@@ -5,14 +5,14 @@
 Copiar el .env.example
 
 ```bash
-$ cp .env.example .env
+cp .env.example .env
 ```
 
 Completar las variables de entorno de Binance. Para obtenerlas se deben crear en la [Testnet de Binance](https://testnet.binance.vision).\
 No es necesario cambiar la url de la base de datos ya que está disponible en el docker-compose.yml. Para correrla ejecutar el comando:
 
 ```bash
-$ docker-compose up
+docker-compose up
 ```
 
 ## Instalación
@@ -20,19 +20,19 @@ $ docker-compose up
 Para proceder a la instalación correr el siguiente comando:
 
 ```bash
-$ npm install && npm run db:push
+npm install && npm run db:push
 ```
 
 ## Correr la aplicación
 
 ```bash
-$ npm start
+npm start
 ```
 
 ## Test
 
 ```bash
-$ npm run test
+npm run test
 ```
 
 ## Endpoints
