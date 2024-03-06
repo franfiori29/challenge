@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Side {
+  BUY
+  SELL
+}
+
+enum Symbol {
+  BTCUSDT
+  ETHUSDT
+  AAVEUSDC
+}
+
+model PriceEstimation {
+  id         String   @id @default(uuid())
+  pair       Symbol
+  side       Side
+  subtotal   Float
+  fee        Float
+  volume     Float
+  spread     Float
+  price      Float
+  expiration DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  swap Swap?
+}
+
+model Swap {
+  id                String @id @default(uuid())
+  subtotal          Float
+  fee               Float
+  spread            Float
+  total             Float
+  orderId           String
+  priceEstimationId String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  priceEstimation PriceEstimation @relation(fields: [priceEstimationId], references: [id])
+}
