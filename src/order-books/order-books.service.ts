@@ -20,7 +20,10 @@ export class OrderBooksService {
     private readonly prismaService: PrismaService,
   ) {}
 
-  async getOptimalPrice({ symbol, side, volume }: OptimalPrice) {
+  async getOptimalPrice(
+    { symbol, side, volume }: OptimalPrice,
+    userId: string,
+  ) {
     const { asks, bids } = await this.binanceService.client.orderBook(
       this.symbolsService.getSymbolForBinance(symbol),
       { limit: 500 },
@@ -57,6 +60,7 @@ export class OrderBooksService {
         fee,
         price: totalPrice,
         volume,
+        userId,
       },
     });
 
@@ -67,10 +71,11 @@ export class OrderBooksService {
     };
   }
 
-  async createOrder(estimateId: string) {
+  async createOrder(estimateId: string, userId: string) {
     const estimation = await this.prismaService.priceEstimation.findUnique({
       where: {
         id: estimateId,
+        userId,
       },
       include: {
         swap: true,
@@ -87,43 +92,38 @@ export class OrderBooksService {
       throw new BadRequestException();
     }
 
-    try {
-      const order = await this.binanceService.client.newOrder(
-        estimation.pair,
-        Side.BUY,
-        OrderType.MARKET,
-        {
-          quantity: estimation.volume,
-        },
-      );
+    const order = await this.binanceService.client.newOrder(
+      estimation.pair,
+      Side.BUY,
+      OrderType.MARKET,
+      {
+        quantity: estimation.volume,
+      },
+    );
 
-      const { fee, spread, totalPrice } = this.calculateFeeAndSpread(
-        estimation.pair,
-        +order.cummulativeQuoteQty!,
-        estimation.side as Side,
-      );
+    const { fee, spread, totalPrice } = this.calculateFeeAndSpread(
+      estimation.pair,
+      +order.cummulativeQuoteQty!,
+      estimation.side as Side,
+    );
 
-      const swap = await this.prismaService.swap.create({
-        data: {
-          priceEstimationId: estimation.id,
-          orderId: order.orderId.toString(),
-          fee,
-          spread,
-          subtotal: +order.cummulativeQuoteQty!,
-          total: totalPrice,
-        },
-        select: {
-          id: true,
-          total: true,
-        },
-      });
+    const swap = await this.prismaService.swap.create({
+      data: {
+        priceEstimationId: estimation.id,
+        orderId: order.orderId.toString(),
+        fee,
+        spread,
+        subtotal: +order.cummulativeQuoteQty!,
+        total: totalPrice,
+        userId,
+      },
+      select: {
+        id: true,
+        total: true,
+      },
+    });
 
-      return swap;
-    } catch (error) {
-      if (error && typeof error === 'object' && 'message' in error) {
-        console.log(error.message);
-      }
-    }
+    return swap;
   }
 
   getOptimalPriceFromOrders(orders: string[][], volume: number) {
