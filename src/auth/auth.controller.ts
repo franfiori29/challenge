@@ -9,8 +9,8 @@ import {
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './local-auth.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
-import { Public } from 'src/decorators';
-import { RegisterSchemaDto } from 'src/dto/auth';
+import { Public } from '../decorators';
+import { RegisterSchemaDto } from '../dto/auth';
 
 @Controller('auth')
 export class AuthController {

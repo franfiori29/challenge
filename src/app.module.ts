@@ -13,7 +13,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { AuthGuard } from './auth/auth.guard';
 import { JwtService } from '@nestjs/jwt';
 
-@Module({
+export const moduleObject = {
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
@@ -41,5 +41,6 @@ import { JwtService } from '@nestjs/jwt';
       useClass: JwtAuthGuard,
     },
   ],
-})
+};
+@Module(moduleObject)
 export class AppModule {}

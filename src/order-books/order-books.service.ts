@@ -10,7 +10,7 @@ import { BinanceService } from '../binance/binance.service';
 import { priceExpiration } from '../config';
 import { OptimalPrice } from '../dto/optimal.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { UsersService } from 'src/users/users.service';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class OrderBooksService {
@@ -90,7 +90,7 @@ export class OrderBooksService {
     const estimation = await this.prismaService.priceEstimation.findUnique({
       where: {
         id: estimateId,
-        userId,
+        // userId,
       },
       include: {
         swap: true,
