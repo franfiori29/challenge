@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { OrderBooksService } from './order-books/order-books.service';
-import { SymbolsService } from './symbols/symbols.service';
 import { APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { BinanceService } from './binance/binance.service';
@@ -26,7 +25,6 @@ import { JwtService } from '@nestjs/jwt';
   providers: [
     AppService,
     OrderBooksService,
-    SymbolsService,
     BinanceService,
     PrismaService,
     JwtService,

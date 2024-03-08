@@ -7,26 +7,40 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { BinanceService } from '../binance/binance.service';
-import { priceExpiration, symbolsDictionary } from '../config';
+import { priceExpiration } from '../config';
 import { OptimalPrice } from '../dto/optimal.dto';
-import { SymbolsService } from '../symbols/symbols.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { UsersService } from 'src/users/users.service';
 
 @Injectable()
 export class OrderBooksService {
   constructor(
-    private readonly symbolsService: SymbolsService,
     private readonly binanceService: BinanceService,
     private readonly prismaService: PrismaService,
+    private readonly usersService: UsersService,
   ) {}
 
   async getOptimalPrice(
     { symbol, side, volume }: OptimalPrice,
     userId: string,
   ) {
+    const pair = await this.prismaService.pair.findUnique({
+      where: {
+        symbol,
+      },
+      include: {
+        baseToken: true,
+        quoteToken: true,
+      },
+    });
+
+    if (!pair) {
+      throw new NotFoundException();
+    }
+
     const { asks, bids } = await this.binanceService.client.orderBook(
-      this.symbolsService.getSymbolForBinance(symbol),
-      { limit: 500 },
+      pair.binanceProxySymbol ?? pair.symbol,
+      { limit: 1000 },
     );
 
     const subTotalPrice = this.getOptimalPriceFromOrders(
@@ -39,22 +53,23 @@ export class OrderBooksService {
         'Requested volume cannot be covered by available orders',
       );
     }
-
-    if (!this.symbolsService.isNotionalValid(symbol, subTotalPrice)) {
+    // price >= symbolsDictionary[symbol].notional
+    if (subTotalPrice < pair.notional) {
       throw new BadRequestException('Notional value is too low');
     }
 
-    const { totalPrice, fee, spread } = this.calculateFeeAndSpread(
-      symbol,
-      subTotalPrice,
+    const { totalPrice, fee, spread } = this.calculateFeeAndSpread({
+      feePercentage: pair.feePercentage,
       side,
-    );
+      spreadPercentage: pair.spreadPercentage,
+      subTotalPrice,
+    });
 
     const priceEstimation = await this.prismaService.priceEstimation.create({
       data: {
         side,
         expiration: new Date(Date.now() + priceExpiration),
-        pair: symbol,
+        pairId: pair.id,
         subtotal: subTotalPrice,
         spread,
         fee,
@@ -79,6 +94,7 @@ export class OrderBooksService {
       },
       include: {
         swap: true,
+        pair: true,
       },
     });
 
@@ -92,8 +108,20 @@ export class OrderBooksService {
       throw new BadRequestException();
     }
 
+    const userQuoteTokenBalance = await this.usersService.getUserBalance(
+      estimation.pair.quoteTokenId,
+      userId,
+    );
+
+    if (
+      !userQuoteTokenBalance ||
+      userQuoteTokenBalance.amount < estimation.price
+    ) {
+      throw new BadRequestException('Insufficient funds');
+    }
+
     const order = await this.binanceService.client.newOrder(
-      estimation.pair,
+      estimation.pair.binanceProxySymbol ?? estimation.pair.symbol,
       Side.BUY,
       OrderType.MARKET,
       {
@@ -101,11 +129,14 @@ export class OrderBooksService {
       },
     );
 
-    const { fee, spread, totalPrice } = this.calculateFeeAndSpread(
-      estimation.pair,
-      +order.cummulativeQuoteQty!,
-      estimation.side as Side,
-    );
+    await this.usersService.performBalanceTransaction(estimation, userId);
+
+    const { fee, spread, totalPrice } = this.calculateFeeAndSpread({
+      feePercentage: estimation.pair.feePercentage,
+      side: estimation.side as Side,
+      spreadPercentage: estimation.pair.spreadPercentage,
+      subTotalPrice: +order.cummulativeQuoteQty!,
+    });
 
     const swap = await this.prismaService.swap.create({
       data: {
@@ -146,12 +177,17 @@ export class OrderBooksService {
     return totalVolume < volume ? null : +totalPrice.toFixed(8);
   }
 
-  calculateFeeAndSpread(
-    symbol: keyof typeof symbolsDictionary,
-    subTotalPrice: number,
-    side: Side,
-  ) {
-    const { spreadPercentage, feePercentage } = symbolsDictionary[symbol];
+  calculateFeeAndSpread({
+    spreadPercentage,
+    feePercentage,
+    side,
+    subTotalPrice,
+  }: {
+    spreadPercentage: number;
+    feePercentage: number;
+    side: Side;
+    subTotalPrice: number;
+  }) {
     const spread = +(subTotalPrice * spreadPercentage).toFixed(8);
     const fee = +(subTotalPrice * feePercentage).toFixed(8);
     const totalPrice =
