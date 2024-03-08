@@ -20,7 +20,7 @@ docker-compose up
 Para proceder a la instalación correr el siguiente comando:
 
 ```bash
-npm install && npm run db:push
+npm install && npm run db:push && npm run seed
 ```
 
 ## Correr la aplicación
@@ -88,4 +88,5 @@ Ejemplo de respuesta:
 
 - La aplicación da quotes para 3 tipos de swap: BTCUSDT, ETHUSDT y AAVEUSDC.
 - Al no estar disponible AAVEUSDC en Binance, se usa como proxy el pair AAVEUSDT en Binance para dar un estimado.
-- El precio que devuelve la API expira a los 30 segundos, luego de eso ya no se podrá hacer uso del mismo y se deberá pedir nuevamente. Este parámetro puede ser cambiado en el archivo config.ts. En este mismo también se encuentra el objeto **_symbolsDictionary_** donde se puede setear en cada par el fee, spread, notional y si lo requiere el proxy de otro par de Binance.
+- El precio que devuelve la API expira a los 30 segundos, luego de eso ya no se podrá hacer uso del mismo y se deberá pedir nuevamente. Este parámetro puede ser cambiado en el archivo config.ts.
+- A nivel base de datos se puede cambiar el fee, spread y notional de cada pair, así como también qué proxy de Binance se debe usar en caso de necesitarlo.

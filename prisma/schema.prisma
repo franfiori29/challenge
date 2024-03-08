@@ -18,15 +18,9 @@ enum Side {
   SELL
 }
 
-enum Symbol {
-  BTCUSDT
-  ETHUSDT
-  AAVEUSDC
-}
-
 model PriceEstimation {
   id         String   @id @default(uuid())
-  pair       Symbol
+  pairId     String
   side       Side
   subtotal   Float
   fee        Float
@@ -34,11 +28,14 @@ model PriceEstimation {
   spread     Float
   price      Float
   expiration DateTime
+  userId     String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   swap Swap?
+  user User  @relation(fields: [userId], references: [id])
+  pair Pair  @relation(fields: [pairId], references: [id])
 }
 
 model Swap {
@@ -49,9 +46,71 @@ model Swap {
   total             Float
   orderId           String
   priceEstimationId String @unique
+  userId            String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   priceEstimation PriceEstimation @relation(fields: [priceEstimationId], references: [id])
+  user            User            @relation(fields: [userId], references: [id])
+}
+
+model User {
+  id       String @id @default(uuid())
+  username String @unique
+  password String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  priceEstimations PriceEstimation[]
+  swaps            Swap[]
+  balances         Balance[]
+}
+
+model Balance {
+  id      String @id @default(uuid())
+  userId  String
+  tokenId String
+  amount  Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id])
+  token Token @relation(fields: [tokenId], references: [id])
+
+  @@unique([userId, tokenId])
+}
+
+model Token {
+  id   String @id @default(uuid())
+  name String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  balances   Balance[]
+  pairsBase  Pair[]    @relation("baseToken")
+  pairsQuote Pair[]    @relation("quoteToken")
+}
+
+model Pair {
+  id                 String  @id @default(uuid())
+  baseTokenId        String
+  quoteTokenId       String
+  symbol             String  @unique
+  feePercentage      Float
+  spreadPercentage   Float
+  notional           Float
+  binanceProxySymbol String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  baseToken        Token             @relation("baseToken", fields: [baseTokenId], references: [id])
+  quoteToken       Token             @relation("quoteToken", fields: [quoteTokenId], references: [id])
+  priceEstimations PriceEstimation[]
+
+  @@unique([baseTokenId, quoteTokenId])
 }

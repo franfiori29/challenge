@@ -1,52 +1,89 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { AppController } from '../src/app.controller';
-import { AppService } from '../src/app.service';
 import { Side } from '@binance/connector-typescript';
-import { OrderBooksService } from '../src/order-books/order-books.service';
-import { SymbolsService } from '../src/symbols/symbols.service';
-import { BinanceService } from '../src/binance/binance.service';
-import { APP_PIPE } from '@nestjs/core';
-import { ZodValidationPipe } from 'nestjs-zod';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { ConfigModule } from '@nestjs/config';
 import * as request from 'supertest';
 import { INestApplication } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { AuthModule } from '../src/auth/auth.module';
+import { UsersModule } from '../src/users/users.module';
+import { AppController } from '../src/app.controller';
+import { AppService } from '../src/app.service';
+import { OrderBooksService } from '../src/order-books/order-books.service';
+import { BinanceService } from '../src/binance/binance.service';
+import { JwtService } from '@nestjs/jwt';
+import { APP_GUARD, APP_PIPE } from '@nestjs/core';
+import { ZodValidationPipe } from 'nestjs-zod';
+import { JwtAuthGuard } from '../src/auth/jwt-auth.guard';
+import { AuthGuard } from '../src/auth/auth.guard';
 
 describe('AppController', () => {
   // let appController: AppController;
   let app: INestApplication;
   let prismaService: PrismaService;
+  let token: string;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({
           isGlobal: true,
         }),
+        AuthModule,
+        UsersModule,
       ],
       controllers: [AppController],
       providers: [
         AppService,
         OrderBooksService,
-        SymbolsService,
         BinanceService,
         PrismaService,
+        JwtService,
         {
           provide: APP_PIPE,
           useClass: ZodValidationPipe,
+        },
+        {
+          provide: APP_GUARD,
+          useClass: AuthGuard,
+        },
+        {
+          provide: APP_GUARD,
+          useClass: JwtAuthGuard,
         },
       ],
     }).compile();
     app = moduleRef.createNestApplication();
     prismaService = moduleRef.get<PrismaService>(PrismaService);
     await app.init();
-    // appController = moduleRef.get<AppController>(AppController);
+
+    const res = await request(app.getHttpServer()).post('/auth/login').send({
+      username: 'user',
+      password: 'password',
+    });
+    token = res.body.access_token;
+
+    await prismaService.balance.updateMany({
+      data: {
+        amount: 100,
+      },
+      where: {
+        user: {
+          username: 'user',
+        },
+      },
+    });
   });
+
+  function makeRequest(type: 'get' | 'post', path: string) {
+    return request(app.getHttpServer())
+      [type](path)
+      .set('Authorization', `Bearer ${token}`);
+  }
 
   describe('optimal endpoint', () => {
     it('should return a valid price, expire time and estimateId', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/optimal')
+      const res = await makeRequest('get', '/optimal')
+        // .get('/optimal')
         .query({
           symbol: 'BTCUSDT',
           side: Side.BUY,
@@ -61,12 +98,12 @@ describe('AppController', () => {
     });
 
     it('should return a higher buy value than a sell value', async () => {
-      const buyResponse = request(app.getHttpServer()).get('/optimal').query({
+      const buyResponse = makeRequest('get', '/optimal').query({
         symbol: 'BTCUSDT',
         side: Side.BUY,
         volume: 0.0001,
       });
-      const sellRespones = request(app.getHttpServer()).get('/optimal').query({
+      const sellRespones = makeRequest('get', '/optimal').query({
         symbol: 'BTCUSDT',
         side: Side.SELL,
         volume: 0.0001,
@@ -76,19 +113,17 @@ describe('AppController', () => {
     });
 
     it('should not accept other symbols', async () => {
-      return request(app.getHttpServer())
-        .get('/optimal')
+      return makeRequest('get', '/optimal')
         .query({
           symbol: 'DOGEUSDT',
           side: Side.BUY,
           volume: 0.0001,
         })
-        .expect(400);
+        .expect(404);
     });
 
     it('should not accept a wrong side', async () => {
-      return request(app.getHttpServer())
-        .get('/optimal')
+      return makeRequest('get', '/optimal')
         .query({
           symbol: 'BTCUSDT',
           side: 'LOAN',
@@ -98,8 +133,7 @@ describe('AppController', () => {
     });
 
     it('should error if the asked volume is too high', async () => {
-      return request(app.getHttpServer())
-        .get('/optimal')
+      return makeRequest('get', '/optimal')
         .query({
           symbol: 'BTCUSDT',
           side: Side.BUY,
@@ -109,8 +143,7 @@ describe('AppController', () => {
     });
 
     it('should error if the asked volume is for a lower price than the notional', async () => {
-      return request(app.getHttpServer())
-        .get('/optimal')
+      return makeRequest('get', '/optimal')
         .query({
           symbol: 'BTCUSDT',
           side: Side.BUY,
@@ -122,16 +155,13 @@ describe('AppController', () => {
 
   describe('order endpoint', () => {
     it('should return a valid swap', async () => {
-      const estimate = await request(app.getHttpServer())
-        .get('/optimal')
-        .query({
-          symbol: 'BTCUSDT',
-          side: Side.BUY,
-          volume: 0.0001,
-        });
+      const estimate = await makeRequest('get', '/optimal').query({
+        symbol: 'BTCUSDT',
+        side: Side.BUY,
+        volume: 0.0001,
+      });
 
-      const res = await request(app.getHttpServer())
-        .post('/order')
+      const res = await makeRequest('post', '/order')
         .send({
           estimateId: estimate.body.estimateId,
         })
@@ -142,8 +172,7 @@ describe('AppController', () => {
     });
 
     it('should not accept a not existing estimate', async () => {
-      return request(app.getHttpServer())
-        .post('/order')
+      return makeRequest('post', '/order')
         .send({
           estimateId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
         })
@@ -151,42 +180,99 @@ describe('AppController', () => {
     });
 
     it('should not continue for an expired estimated price', async () => {
-      jest
-        .spyOn(prismaService.priceEstimation, 'findUnique')
-        //@ts-expect-error mock implementation
-        .mockImplementationOnce(async () => {
-          return {
-            expiration: new Date('2021-01-01'),
-          };
-        });
-      const a = await request(app.getHttpServer())
-        .post('/order')
+      const est = await prismaService.priceEstimation.create({
+        data: expiredEstimateobject,
+      });
+
+      const a = await makeRequest('post', '/order')
         .send({
-          estimateId: 'aaaaaaaa-bbbb-bbbb-bbbb-aaaaaaaaaaaa',
+          estimateId: est.id,
         })
         .expect(400);
       return a;
     });
 
     it('should not continue for a used estimated price', async () => {
-      jest
-        .spyOn(prismaService.priceEstimation, 'findUnique')
-        //@ts-expect-error mock implementation
-        .mockImplementationOnce(async () => {
-          return {
-            expiration: new Date(Date.now() + 60 * 1000),
-            swap: {
-              id: 'asd',
-            },
-          };
-        });
-      const a = await request(app.getHttpServer())
-        .post('/order')
+      const est = await prismaService.priceEstimation.create({
+        data: usedEstimateobject,
+      });
+
+      const a = await makeRequest('post', '/order')
         .send({
-          estimateId: 'aaaaaaaa-bbbb-bbbb-bbbb-aaaaaaaaaaaa',
+          estimateId: est.id,
         })
         .expect(409);
       return a;
     });
+
+    it("should error if no funds on the user's balance", async () => {
+      const estimate = await makeRequest('get', '/optimal').query({
+        symbol: 'BTCUSDT',
+        side: Side.BUY,
+        volume: 0.1,
+      });
+
+      const res = await makeRequest('post', '/order')
+        .send({
+          estimateId: estimate.body.estimateId,
+        })
+        .expect(400);
+
+      expect(res.body.message).toBe('Insufficient funds');
+    });
   });
 });
+
+const expiredEstimateobject = {
+  expiration: new Date('2021-03-03'),
+  fee: 0.1,
+  price: 0.1,
+  side: 'BUY',
+  spread: 0.1,
+  subtotal: 0.1,
+  volume: 0.1,
+  user: {
+    connect: {
+      username: 'user',
+    },
+  },
+  pair: {
+    connect: {
+      symbol: 'BTCUSDT',
+    },
+  },
+} as const;
+
+const usedEstimateobject = {
+  expiration: new Date('2024-03-03'),
+  fee: 0.1,
+  price: 0.1,
+  side: 'BUY',
+  spread: 0.1,
+  subtotal: 0.1,
+  volume: 0.1,
+  user: {
+    connect: {
+      username: 'user',
+    },
+  },
+  pair: {
+    connect: {
+      symbol: 'BTCUSDT',
+    },
+  },
+  swap: {
+    create: {
+      fee: 0.1,
+      orderId: '123',
+      spread: 0.1,
+      subtotal: 0.1,
+      total: 0.1,
+      user: {
+        connect: {
+          username: 'user',
+        },
+      },
+    },
+  },
+} as const;
