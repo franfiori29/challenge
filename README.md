@@ -1,6 +1,6 @@
 # Belo Challenge
 
-En la rama _main_ del repositorio se encuentra una versión simplificada del challenge en la que expone los dos endpoints pedidos. Por otro lado, en la rama _with/auth_ se agregó registro, login y manejo de balances. Al hacer un swap se actualizar dichos balances y queda un historial de las transacciones.
+En la rama _main_ del repositorio se encuentra una versión simplificada del challenge en la que expone los dos endpoints pedidos. Por otro lado, en la rama _with/auth_ se agregó registro, login y manejo de balances. Al hacer un swap se actualizan dichos balances y queda un historial de las transacciones.
 
 ## Preparación del entorno
 
